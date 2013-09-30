@@ -186,21 +186,27 @@ handle_cast(compare_beams, State) ->
 
 handle_cast(compare_src_files, State) ->
     %% Create a list of file lastmod times...
-    F = fun(X) ->
-        LastMod = filelib:last_modified(X),
-        {X, LastMod}
-    end,
-    NewSrcFileLastMod = lists:usort([F(X) || X <- State#state.src_files]),
+    NewState = case sync_utils:get_env(compile, false) of
+        true ->
+            F = fun(X) ->
+                LastMod = filelib:last_modified(X),
+                {X, LastMod}
+            end,
+            NewSrcFileLastMod = lists:usort([F(X) || X <- State#state.src_files]),
 
-    %% Compare to previous results, if there are changes, then recompile the file...
-    process_src_file_lastmod(State#state.src_file_lastmod, NewSrcFileLastMod, State#state.patching),
+            %% Compare to previous results, if there are changes, then recompile the file...
+            process_src_file_lastmod(State#state.src_file_lastmod, NewSrcFileLastMod, State#state.patching),
+            State#state { src_file_lastmod=NewSrcFileLastMod};
+        false ->
+            State
+    end,
 
     %% Schedule the next interval...
     NewTimers = schedule_cast(compare_src_files, 1000, State#state.timers),
 
     %% Return with updated src_file lastmod...
-    NewState = State#state { src_file_lastmod=NewSrcFileLastMod, timers=NewTimers },
-    {noreply, NewState};
+    NewState2 = NewState#state { timers=NewTimers },
+    {noreply, NewState2};
 
 handle_cast(info, State) ->
     io:format("Modules: ~p~n", [State#state.modules]),
